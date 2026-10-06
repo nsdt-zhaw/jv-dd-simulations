@@ -12,7 +12,7 @@ glass  →  ITO (50 nm)  →  ETL (5 nm)  →  absorber  →  HTL (5 nm)  →  A
 
 ## Live site
 
-**https://mtorrec.github.io/jv-parameter-explorer/**
+**https://nsdt-zhaw.github.io/jv-dd-simulations/explorer/**
 
 ## Grid
 
