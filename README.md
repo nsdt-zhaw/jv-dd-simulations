@@ -21,6 +21,8 @@ bad_start/                         # starting point — upload this folder's con
     Data_nk/nk_{Au,C60_1,ITO,PTAA,SiO2}.txt  # stack optical constants
     Data_spectrum/AM15G.txt        # solar spectrum (not needed on the online GUI)
     simss.exe                      # SIMsalabim v5.36 Windows binary (optional local run)
+explorer/                          # interactive JV parameter explorer (static site, 384 pre-computed
+                                   # Setfos sims, live at nsdt-zhaw.github.io/jv-dd-simulations/explorer/)
 ```
 
 ## Upload workflow (summary)
