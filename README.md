@@ -3,7 +3,7 @@
 Drift-diffusion exercise: tune a badly-designed solar cell to above
 25 % PCE using [SIMsalabim](https://github.com/kostergroup/SIMsalabim) through its
 online GUI at <http://simsalabim-online.com/>. Full instructions are in
-[`instructions.pdf`](instructions.pdf).
+[`instructions.pdf`](instructions.pdf). An interactive JV parameter explorer is also available from this repo at <https://nsdt-zhaw.github.io/jv-dd-simulations/explorer/>.
 
 ## Files in this repo
 
