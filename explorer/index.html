@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>n-i-p solar cell JV explorer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    --fg: #111;
+    --muted: #666;
+    --border: #d0d0d0;
+    --bad: #d55e00;
+    --good: #009e73;
+    --live: #0072b2;
+    --tco: #b0abd6;
+    --etl: #a7dbb5;
+    --abs: #7a5b93;
+    --htl: #f2c58c;
+    --au:  #e9c53a;
+  }
+  html, body { margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif;
+               color: var(--fg); background: #fafafa; font-size: 14px; }
+  header { padding: 16px 22px 4px; }
+  header h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  /* Schematic row: device stack image + live energy diagram */
+  .schematic { display: grid; grid-template-columns: 1fr 2fr; gap: 22px;
+               padding: 12px 22px; max-width: 1400px; align-items: stretch; }
+  .schematic .card { background: white; border: 1px solid var(--border);
+                     border-radius: 6px; padding: 8px; display: flex;
+                     flex-direction: column; align-items: center; }
+  .schematic .card .cap { font-size: 12px; color: var(--muted);
+                          margin: 4px 0 6px; font-weight: 500; }
+  .schematic img { max-width: 100%; max-height: 320px; height: auto; }
+  #ediagram { width: 100%; height: 320px; }
+
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 22px;
+         padding: 4px 22px 22px; max-width: 1400px; }
+  @media (max-width: 1000px) {
+    main, .schematic { grid-template-columns: 1fr; }
+  }
+
+  .panel { background: white; border: 1px solid var(--border);
+           border-radius: 6px; padding: 14px 16px; }
+  .panel h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+
+  .control { margin-bottom: 14px; }
+  .control label { display: block; font-size: 13px; font-weight: 500;
+                   margin-bottom: 4px; }
+  .control .val { color: var(--live); font-weight: 600; margin-left: 4px; }
+  .control input[type=range] { width: 100%; }
+  .control .ticks { display: flex; justify-content: space-between;
+                    font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .control .seebtn { font-size: 10px; padding: 1px 6px; margin-left: 4px;
+                     border: 1px solid #ccc; background: white;
+                     border-radius: 3px; cursor: pointer; color: #444;
+                     vertical-align: middle; }
+  .control .seebtn:hover { background: #f0f0f0; }
+  .control .seebtn.active { background: #333; color: white;
+                            border-color: #333; }
+
+  .kf { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+        margin: 10px 0 4px; text-align: center; }
+  .kf .box { border: 1px solid var(--border); border-radius: 4px;
+             padding: 6px 4px; background: #fdfdfd; }
+  .kf .box .lbl { font-size: 11px; color: var(--muted); }
+  .kf .box .num { font-size: 15px; font-weight: 600; color: var(--live); }
+
+  .progress { margin-top: 10px; }
+  .progress .bar { height: 10px; background: #eee; border-radius: 5px;
+                   overflow: hidden; border: 1px solid var(--border); }
+  .progress .fill { height: 100%; background: linear-gradient(90deg,
+                    var(--bad), #f0e442, var(--good)); width: 0%;
+                    transition: width 0.15s ease; }
+  .progress .txt { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+  .buttons { display: flex; gap: 8px; margin-top: 10px; }
+  .buttons button { flex: 1; padding: 7px 8px; font-size: 12px;
+                    border: 1px solid var(--border); background: white;
+                    border-radius: 4px; cursor: pointer; }
+  .buttons button:hover { background: #f0f0f0; }
+  .buttons button.bad  { border-color: var(--bad);  color: var(--bad); }
+  .buttons button.good { border-color: var(--good); color: var(--good); }
+
+  .plots { display: grid; grid-template-rows: auto auto; gap: 12px; }
+  .plotwrap { background: white; border: 1px solid var(--border);
+              border-radius: 6px; padding: 8px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  footer { padding: 8px 22px 22px; color: var(--muted); font-size: 12px; }
+  footer a { color: var(--live); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>n-i-p solar cell JV explorer</h1>
+  <p>Drag the sliders to observe the effect of different parameters on
+     the JV curve and reach the best possible JV.</p>
+</header>
+
+<section class="schematic">
+  <div class="card">
+    <img src="device_stack.png" alt="device stack schematic">
+  </div>
+  <div class="card">
+    <svg id="ediagram" viewBox="0 0 600 320" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+</section>
+
+<main>
+
+  <div class="panel">
+    <h2>Absorber parameters</h2>
+
+    <div class="control">
+      <label>Bandgap <span class="val" id="egVal"></span>
+        <button class="seebtn" data-param="Eg">See all</button></label>
+      <input type="range" id="egSel" min="0" max="2" step="1">
+      <div class="ticks" id="egTicks"></div>
+    </div>
+
+    <div class="control">
+      <label>Absorber thickness <span class="val" id="LVal"></span>
+        <button class="seebtn" data-param="L">See all</button></label>
+      <input type="range" id="LSel" min="0" max="3" step="1">
+      <div class="ticks" id="LTicks"></div>
+    </div>
+
+    <div class="control">
+      <label>Bulk SRH lifetime &tau; <span class="val" id="tauVal"></span>
+        <button class="seebtn" data-param="tau">See all</button></label>
+      <input type="range" id="tauSel" min="0" max="3" step="1">
+      <div class="ticks" id="tauTicks"></div>
+    </div>
+
+    <div class="control">
+      <label>Interface recombination S <span class="val" id="SVal"></span>
+        <button class="seebtn" data-param="S">See all</button></label>
+      <input type="range" id="SSel" min="0" max="3" step="1">
+      <div class="ticks" id="STicks"></div>
+    </div>
+
+    <div class="control">
+      <label>Bulk mobility &mu; <span class="val" id="muVal"></span>
+        <button class="seebtn" data-param="mu">See all</button></label>
+      <input type="range" id="muSel" min="0" max="1" step="1">
+      <div class="ticks" id="muTicks"></div>
+    </div>
+
+    <h2 style="margin-top:10px;">Parasitic resistances</h2>
+
+    <div class="control">
+      <label>Series resistance R<sub>s</sub> <span class="val" id="RsVal"></span>
+        <button class="seebtn" data-param="Rs">See all</button></label>
+      <input type="range" id="RsSel" min="0" max="3" step="1">
+      <div class="ticks" id="RsTicks"></div>
+    </div>
+
+    <div class="control">
+      <label>Shunt resistance R<sub>sh</sub> <span class="val" id="RshVal"></span>
+        <button class="seebtn" data-param="Rsh">See all</button></label>
+      <input type="range" id="RshSel" min="0" max="3" step="1">
+      <div class="ticks" id="RshTicks"></div>
+    </div>
+
+    <div class="buttons">
+      <button class="bad"  id="setBad">Reset</button>
+      <button class="good" id="toggleBest">Show best JV</button>
+    </div>
+
+    <div class="kf">
+      <div class="box"><div class="lbl">J<sub>sc</sub> (mA/cm&sup2;)</div><div class="num" id="kfJsc">–</div></div>
+      <div class="box"><div class="lbl">V<sub>oc</sub> (V)</div><div class="num" id="kfVoc">–</div></div>
+      <div class="box"><div class="lbl">FF</div><div class="num" id="kfFF">–</div></div>
+      <div class="box"><div class="lbl">PCE (%)</div><div class="num" id="kfPCE">–</div></div>
+    </div>
+
+    <div class="progress">
+      <div class="bar"><div class="fill" id="progFill"></div></div>
+      <div class="txt" id="progTxt">PCE (0 – 30 %)</div>
+    </div>
+
+    <p class="hint">Your current device is the blue curve. Click
+       "Show best JV" to compare it with the best JV achievable on this
+       stack (parameters not revealed).</p>
+  </div>
+
+  <div class="plots">
+    <div class="plotwrap">
+      <div id="plot" style="width:100%;height:500px;"></div>
+    </div>
+    <div class="plotwrap">
+      <div id="absplot" style="width:100%;height:280px;"></div>
+    </div>
+  </div>
+
+</main>
+
+<!--
+<footer>
+  Backing data: 384 Setfos JVs (3 &times; 4 &times; 4 &times; 4 &times; 2) and
+  three transfer-matrix absorptance spectra.
+  Source: <a href="https://github.com/nsdt-zhaw/jv-dd-simulations/tree/main/explorer">
+    github.com/mtorrec/jv-parameter-explorer</a>.
+</footer>
+-->
+
+<script>
+// ------------- utilities -------------
+const fmt = (x, n = 2) => (x === null || x === undefined || !isFinite(x))
+  ? "–" : Number(x).toFixed(n);
+
+const supMap = {"-":"⁻","0":"⁰","1":"¹","2":"²","3":"³","4":"⁴",
+                "5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
+const supScript = (n) => String(n).split("").map(c => supMap[c] || c).join("");
+const sci = (x) => {
+  if (x === 0) return "0";
+  const e = Math.floor(Math.log10(Math.abs(x)));
+  const m = x / Math.pow(10, e);
+  if (Math.abs(m - Math.round(m)) < 1e-6) return `10${supScript(e)}`;
+  return `${m.toFixed(1)}×10${supScript(e)}`;
+};
+
+// ------------- state -------------
+let GRID = null;
+let EXTRAS = null;
+
+// Rs / Rsh are applied purely as post-processing on the intrinsic (V,J).
+// Values in Ohm*cm^2. Rsh = Infinity = no shunt.
+const RS_LIST  = [0, 2, 5, 10];
+const RSH_LIST = [50, 100, 500, Infinity];
+
+// Apply series + shunt to an intrinsic (V_int in V, J_int in mA/cm^2).
+// V_terminal = V_int + J_after * Rs / 1000
+// J_after    = J_int + 1000 * V_int / Rsh
+function applyRsRsh(V, J, Rs, Rsh) {
+  const N = V.length;
+  const Vt = new Array(N);
+  const Jt = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const Jshunt = isFinite(Rsh) ? 1000 * V[i] / Rsh : 0;
+    const Jafter = J[i] + Jshunt;
+    Vt[i] = V[i] + Jafter * Rs / 1000;
+    Jt[i] = Jafter;
+  }
+  return { V: Vt, J: Jt };
+}
+
+// Viridis colormap approximation (interpolated from 9 stops).
+const VIRIDIS_STOPS = [
+  [0.00, [68, 1, 84]], [0.13, [72, 40, 120]], [0.25, [62, 74, 137]],
+  [0.38, [49, 104, 142]], [0.50, [38, 130, 142]], [0.63, [31, 158, 137]],
+  [0.75, [53, 183, 121]], [0.88, [110, 206, 88]], [1.00, [253, 231, 37]],
+];
+function viridis(t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < VIRIDIS_STOPS.length; i++) {
+    if (t <= VIRIDIS_STOPS[i][0]) {
+      const [t0, c0] = VIRIDIS_STOPS[i - 1];
+      const [t1, c1] = VIRIDIS_STOPS[i];
+      const u = (t - t0) / (t1 - t0);
+      const c = [0, 1, 2].map(k => Math.round(c0[k] + u * (c1[k] - c0[k])));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+  }
+  return "rgb(253,231,37)";
+}
+
+// Compute Jsc, Voc, FF, PCE from a (V, J) curve.
+function keyFig(V, J) {
+  const N = V.length;
+  // Interpolate Jsc at V=0
+  let Jsc = NaN;
+  for (let i = 0; i < N - 1; i++) {
+    if ((V[i] <= 0 && V[i + 1] >= 0) || (V[i] >= 0 && V[i + 1] <= 0)) {
+      const t = (0 - V[i]) / (V[i + 1] - V[i]);
+      Jsc = J[i] + t * (J[i + 1] - J[i]);
+      break;
+    }
+  }
+  // Voc where J crosses zero (sorted by V ascending)
+  let Voc = NaN;
+  for (let i = 0; i < N - 1; i++) {
+    if (J[i] < 0 && J[i + 1] >= 0) {
+      const t = (0 - J[i]) / (J[i + 1] - J[i]);
+      Voc = V[i] + t * (V[i + 1] - V[i]);
+      break;
+    }
+  }
+  // MPP scanning positive V
+  let MPP = 0;
+  for (let i = 0; i < N; i++) {
+    if (V[i] >= 0) {
+      const P = -V[i] * J[i];
+      if (P > MPP) MPP = P;
+    }
+  }
+  const FF = (isFinite(Voc) && Jsc < 0) ? MPP / (-Jsc * Voc) : NaN;
+  return { Jsc, Voc, FF, PCE: MPP };
+}
+
+async function loadAll() {
+  // Cache-buster: force browsers to re-fetch on every page load.
+  const v = "?v=" + Date.now();
+  const [g, e] = await Promise.all([
+    fetch("grid.json" + v).then(r => r.json()),
+    fetch("extras.json" + v).then(r => r.json()),
+  ]);
+  GRID = g;
+  EXTRAS = e;
+  initControls();
+  setFromKey(GRID.meta.bad_key);
+  document.getElementById("RsSel").value  = RS_LIST.indexOf(5);     // Rs = 5 Ω·cm²
+  document.getElementById("RshSel").value = RSH_LIST.indexOf(100);  // Rsh = 100 Ω·cm²
+  buildJVPlot();
+  buildAbsPlot();
+  drawEnergyDiagram(currentKey().egEv);
+  update();
+}
+
+// ------------- controls -------------
+function initControls() {
+  const bind = (id, arr, fmtFn, ticksId) => {
+    const el = document.getElementById(id);
+    el.max = arr.length - 1;
+    el.oninput = () => update();
+    const t = document.getElementById(ticksId);
+    if (t) t.innerHTML = arr.map(v => `<span>${fmtFn(v)}</span>`).join("");
+  };
+  bind("egSel",  GRID.meta.Eg.map(o => o.value),
+                                  v => `${v.toFixed(2)}`, "egTicks");
+  bind("LSel",   GRID.meta.L,     v => `${v}`,            "LTicks");
+  bind("tauSel", GRID.meta.tau,   v => `${v}`,            "tauTicks");
+  bind("SSel",   GRID.meta.S,     v => sci(v),            "STicks");
+  bind("muSel",  GRID.meta.mu,    v => `${v}`,            "muTicks");
+  bind("RsSel",  RS_LIST,         v => `${v}`,            "RsTicks");
+  bind("RshSel", RSH_LIST,        v => isFinite(v) ? `${v}` : "∞", "RshTicks");
+
+  document.getElementById("setBad").onclick = () => {
+    setFromKey(GRID.meta.bad_key);
+    document.getElementById("RsSel").value  = RS_LIST.indexOf(5);
+    document.getElementById("RshSel").value = RSH_LIST.indexOf(100);
+    update();
+  };
+
+  let bestVisible = false;
+  const bestBtn = document.getElementById("toggleBest");
+  bestBtn.onclick = () => {
+    bestVisible = !bestVisible;
+    Plotly.restyle("plot", { visible: bestVisible }, [0, 1]);
+    bestBtn.textContent = bestVisible ? "Hide best JV" : "Show best JV";
+  };
+
+  document.querySelectorAll(".seebtn").forEach(btn => {
+    btn.onclick = () => toggleSweep(btn.dataset.param);
+  });
+}
+
+// ------------- sweep view ("See all") -------------
+let expandedParam = null;
+let sweepTraceCount = 0;
+let sweepAbsTraceCount = 0;
+
+function buildSweepData(param) {
+  const cur = currentKey();
+  const V = GRID.V;
+
+  // Helper: key from components (all strings/numbers stringified)
+  const keyOf = (eg, L, tau, S, mu) =>
+    `${eg}|${L}|${tau}|${S}|${mu}`;
+
+  const gridSweeps = {
+    Eg:  { values: GRID.meta.Eg.map(o => o.value),
+           labels: GRID.meta.Eg.map(o => `Eg = ${o.value.toFixed(2)} eV`),
+           key: (v, i) => keyOf(GRID.meta.Eg[i].label, cur.L, cur.tau, cur.S, cur.mu) },
+    L:   { values: GRID.meta.L,
+           labels: GRID.meta.L.map(v => `d = ${v} nm`),
+           key: (v) => keyOf(cur.egLabel, v, cur.tau, cur.S, cur.mu) },
+    tau: { values: GRID.meta.tau,
+           labels: GRID.meta.tau.map(v => `τ = ${v} ns`),
+           key: (v) => keyOf(cur.egLabel, cur.L, v, cur.S, cur.mu) },
+    S:   { values: GRID.meta.S,
+           labels: GRID.meta.S.map(v => `S = ${sci(v)} cm/s`),
+           key: (v) => keyOf(cur.egLabel, cur.L, cur.tau, v, cur.mu) },
+    mu:  { values: GRID.meta.mu,
+           labels: GRID.meta.mu.map(v => `μ = ${v}`),
+           key: (v) => keyOf(cur.egLabel, cur.L, cur.tau, cur.S, v) },
+  };
+
+  if (param in gridSweeps) {
+    const sw = gridSweeps[param];
+    const out = [];
+    sw.values.forEach((v, i) => {
+      const run = GRID.runs[sw.key(v, i)];
+      if (!run) return;
+      const { V: Vt, J: Jt } = applyRsRsh(V, run.J, cur.Rs, cur.Rsh);
+      out.push({ V: Vt, J: Jt, label: sw.labels[i] });
+    });
+    return out;
+  }
+
+  if (param === "Rs" || param === "Rsh") {
+    const run = GRID.runs[cur.key];
+    if (!run) return [];
+    const list = (param === "Rs") ? RS_LIST : RSH_LIST;
+    return list.map(val => {
+      const rs  = (param === "Rs")  ? val : cur.Rs;
+      const rsh = (param === "Rsh") ? val : cur.Rsh;
+      const { V: Vt, J: Jt } = applyRsRsh(V, run.J, rs, rsh);
+      const label = (param === "Rs")
+        ? `Rs = ${val} Ω·cm²`
+        : `Rsh = ${isFinite(val) ? val + " Ω·cm²" : "∞"}`;
+      return { V: Vt, J: Jt, label };
+    });
+  }
+  return [];
+}
+
+function hideSweep() {
+  if (sweepTraceCount > 0) {
+    const base = 4; // JV plot traces 0-3 are the persistent ones
+    const indices = Array.from({ length: sweepTraceCount }, (_, i) => base + i);
+    Plotly.deleteTraces("plot", indices);
+    sweepTraceCount = 0;
+  }
+  if (sweepAbsTraceCount > 0) {
+    const base = 3; // absplot traces 0-2 are the persistent ones
+    const indices = Array.from({ length: sweepAbsTraceCount }, (_, i) => base + i);
+    Plotly.deleteTraces("absplot", indices);
+    sweepAbsTraceCount = 0;
+    // Restore the original single-Eg absorbed shading + absorptance
+    Plotly.restyle("absplot", { visible: true }, [1, 2]);
+  }
+}
+
+function drawSweep(param) {
+  hideSweep();
+  const data = buildSweepData(param);
+  const N = data.length;
+  if (N === 0) return;
+  const traces = [];
+  data.forEach((d, i) => {
+    const col = viridis(N > 1 ? i / (N - 1) : 0.5);
+    traces.push({
+      x: d.V, y: d.J, name: d.label, xaxis: "x", yaxis: "y2",
+      line: { color: col, width: 1.2 }, hoverinfo: "name",
+    });
+    traces.push({
+      x: d.V, y: jvToP(d.V, d.J), xaxis: "x", yaxis: "y",
+      line: { color: col, width: 1.2 }, showlegend: false, hoverinfo: "skip",
+    });
+  });
+  Plotly.addTraces("plot", traces);
+  sweepTraceCount = traces.length;
+
+  // For the bandgap sweep, also overlay absorptance curves on the absplot.
+  if (param === "Eg") {
+    Plotly.restyle("absplot", { visible: false }, [1, 2]);
+    const absTraces = [];
+    const M = GRID.meta.Eg.length;
+    GRID.meta.Eg.forEach((o, i) => {
+      const col = viridis(M > 1 ? i / (M - 1) : 0.5);
+      absTraces.push({
+        x: EXTRAS.wl, y: EXTRAS.absorptance[o.label].A,
+        name: `Eg = ${o.value.toFixed(2)} eV`,
+        line: { color: col, width: 1.5 }, yaxis: "y",
+        hovertemplate: "λ=%{x} nm<br>A=%{y:.2f}<extra></extra>",
+      });
+    });
+    Plotly.addTraces("absplot", absTraces);
+    sweepAbsTraceCount = absTraces.length;
+  }
+}
+
+function toggleSweep(param) {
+  if (expandedParam === param) {
+    expandedParam = null;
+    hideSweep();
+  } else {
+    expandedParam = param;
+    drawSweep(param);
+  }
+  document.querySelectorAll(".seebtn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.param === expandedParam);
+    btn.textContent = (btn.dataset.param === expandedParam) ? "Hide all" : "See all";
+  });
+}
+
+function setFromKey(key) {
+  const [eg, L, tau, S, mu] = key.split("|");
+  const egIdx = GRID.meta.Eg.findIndex(o => o.label === eg);
+  document.getElementById("egSel").value  = egIdx;
+  document.getElementById("LSel").value   = GRID.meta.L.indexOf(  parseFloat(L));
+  document.getElementById("tauSel").value = GRID.meta.tau.indexOf(parseFloat(tau));
+  document.getElementById("SSel").value   = GRID.meta.S.indexOf(  parseFloat(S));
+  document.getElementById("muSel").value  = GRID.meta.mu.indexOf( parseFloat(mu));
+}
+
+function currentKey() {
+  const egMeta = GRID.meta.Eg[+document.getElementById("egSel").value];
+  const L   = GRID.meta.L[  +document.getElementById("LSel").value];
+  const tau = GRID.meta.tau[+document.getElementById("tauSel").value];
+  const S   = GRID.meta.S[  +document.getElementById("SSel").value];
+  const mu  = GRID.meta.mu[ +document.getElementById("muSel").value];
+  const Rs  = RS_LIST[  +document.getElementById("RsSel").value];
+  const Rsh = RSH_LIST[ +document.getElementById("RshSel").value];
+  const gg  = (x) => x.toString();
+  return {
+    key: `${egMeta.label}|${gg(L)}|${gg(tau)}|${gg(S)}|${gg(mu)}`,
+    egLabel: egMeta.label, egEv: egMeta.value, L, tau, S, mu, Rs, Rsh,
+  };
+}
+
+// ------------- JV / power plot -------------
+function jvToP(V, J) {
+  return V.map((v, i) => v >= 0 ? -v * J[i] : NaN);
+}
+
+function buildJVPlot() {
+  const V = GRID.V;
+  const bad   = GRID.runs[GRID.meta.bad_key];
+  const ideal = GRID.runs[GRID.meta.ideal_key];
+
+  // Trace order: 0/1 = ideal (hidden by default), 2/3 = live "your device"
+  const traces = [
+    { x: V, y: ideal.J, name: "Best JV", xaxis: "x", yaxis: "y2",
+      line: { color: "#009e73", width: 1.5, dash: "dot" }, hoverinfo: "name",
+      visible: false },
+    { x: V, y: jvToP(V, ideal.J), name: "Best JV (P)",
+      xaxis: "x", yaxis: "y", line: { color: "#009e73", width: 1.5, dash: "dot" },
+      showlegend: false, hoverinfo: "skip", visible: false },
+    { x: V, y: bad.J, name: "Your device", xaxis: "x", yaxis: "y2",
+      line: { color: "#0072b2", width: 2.4 } },
+    { x: V, y: jvToP(V, bad.J), name: "Your device (P)",
+      xaxis: "x", yaxis: "y", line: { color: "#0072b2", width: 2.4 },
+      showlegend: false, hoverinfo: "skip" },
+  ];
+
+  const layout = {
+    grid: { rows: 2, columns: 1, subplots: [["xy"], ["xy2"]],
+            roworder: "top to bottom" },
+    xaxis:  { domain: [0.08, 0.98], anchor: "y2", range: [-0.05, 1.5],
+              title: "V (V)", showline: true, mirror: true, ticks: "inside",
+              zeroline: false },
+    yaxis:  { domain: [0.66, 0.98], anchor: "x", range: [0, 30],
+              title: "P (mW/cm²)", showline: true, mirror: true, ticks: "inside",
+              zeroline: false },
+    yaxis2: { domain: [0.08, 0.60], anchor: "x", range: [-30, 3],
+              title: "J (mA/cm²)", showline: true, mirror: true, ticks: "inside",
+              zeroline: false },
+    shapes: [
+      // full box around top (power) subplot
+      { type: "rect", xref: "paper", yref: "paper",
+        x0: 0.08, x1: 0.98, y0: 0.66, y1: 0.98,
+        line: { color: "#111", width: 1 }, fillcolor: "rgba(0,0,0,0)" },
+      // full box around bottom (JV) subplot
+      { type: "rect", xref: "paper", yref: "paper",
+        x0: 0.08, x1: 0.98, y0: 0.08, y1: 0.60,
+        line: { color: "#111", width: 1 }, fillcolor: "rgba(0,0,0,0)" },
+      // J = 0 reference line
+      { type: "line", xref: "x", yref: "y2", x0: -0.05, x1: 1.5, y0: 0, y1: 0,
+        line: { color: "#888", width: 0.5 } },
+      // V = 0 reference line
+      { type: "line", xref: "x", yref: "y2", x0: 0, x1: 0, y0: -30, y1: 3,
+        line: { color: "#888", width: 0.5 } },
+    ],
+    margin: { l: 60, r: 20, t: 20, b: 45 },
+    legend: { x: 0.98, y: 0.98, xanchor: "right", yanchor: "top",
+              bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#ccc",
+              borderwidth: 1 },
+    font: { family: "Arial", size: 12, color: "#111" },
+    plot_bgcolor: "white", paper_bgcolor: "white",
+    hovermode: "x unified",
+  };
+
+  Plotly.newPlot("plot", traces, layout,
+                 { responsive: true, displayModeBar: false });
+}
+
+// ------------- absorptance + AM1.5G plot -------------
+function buildAbsPlot() {
+  const wl = EXTRAS.wl;
+  const am = EXTRAS.am15g;
+  const startAbs = EXTRAS.absorptance.high.A;   // bad-start = high Eg
+
+  // AM1.5G filled to zero (background)
+  const traces = [
+    { x: wl, y: am, name: "AM1.5G",
+      line: { color: "#f0c040", width: 1 },
+      fill: "tozeroy", fillcolor: "rgba(240,192,64,0.25)",
+      yaxis: "y2", hoverinfo: "name" },
+    // Absorbed part = am15g * absorptance, shaded
+    { x: wl, y: am.map((v, i) => v * startAbs[i]),
+      name: "Absorbed", line: { color: "#8e44ad", width: 0.5 },
+      fill: "tozeroy", fillcolor: "rgba(122,91,147,0.55)",
+      yaxis: "y2", hoverinfo: "name" },
+    // Absorptance curve (right axis)
+    { x: wl, y: startAbs, name: "Absorptance",
+      line: { color: "#0072b2", width: 2 }, yaxis: "y",
+      hovertemplate: "λ=%{x} nm<br>A=%{y:.2f}<extra></extra>" },
+  ];
+
+  const layout = {
+    xaxis: { title: "Wavelength (nm)", range: [350, 1250],
+             showline: true, mirror: true, ticks: "inside", zeroline: false },
+    yaxis: { title: "Absorptance", range: [0, 1.05], side: "left",
+             showline: true, ticks: "inside", zeroline: false,
+             titlefont: { color: "#0072b2" }, tickfont: { color: "#0072b2" } },
+    yaxis2: { title: "AM1.5G (W m⁻² nm⁻¹)", overlaying: "y", side: "right",
+              range: [0, 1.8], showgrid: false, ticks: "inside",
+              showline: true, mirror: true,
+              titlefont: { color: "#c08000" }, tickfont: { color: "#c08000" } },
+    margin: { l: 55, r: 55, t: 15, b: 45 },
+    legend: { x: 0.98, y: 0.98, xanchor: "right", yanchor: "top",
+              bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#ccc",
+              borderwidth: 1 },
+    font: { family: "Arial", size: 12, color: "#111" },
+    plot_bgcolor: "white", paper_bgcolor: "white",
+    hovermode: "x unified",
+  };
+
+  Plotly.newPlot("absplot", traces, layout,
+                 { responsive: true, displayModeBar: false });
+}
+
+// ------------- energy-level SVG (redraw on Eg change) -------------
+function drawEnergyDiagram(egEv) {
+  const midgap = 4.715;
+  const absLumo = midgap - egEv / 2;
+  const absHomo = midgap + egEv / 2;
+  const etlLumo = absLumo;
+  const etlHomo = absHomo + 1.0;    // blocks holes by 1 eV
+  const htlLumo = absLumo - 1.0;    // blocks electrons by 1 eV
+  const htlHomo = absHomo;
+  const tcoWf = etlLumo;
+  const auWf  = htlHomo;
+
+  const svg = document.getElementById("ediagram");
+  const W = 600, H = 320;
+  const M = { l: 46, r: 12, t: 20, b: 30 };
+  const eMin = -7.6, eMax = -1.9;    // fixed y range so shifts are visible
+  const yOf = (e) => M.t + (eMax - e) / (eMax - eMin) * (H - M.t - M.b);
+  // The x positions of each layer's rectangle
+  const layers = [
+    { key: "tco",  label: "TCO", top: -tcoWf, bot: -tcoWf, fill: "var(--tco)", stroke: "#7c72b8" },
+    { key: "etl",  label: "ETL", top: -etlLumo, bot: -etlHomo, fill: "none",   stroke: "#3ea15a" },
+    { key: "abs",  label: "Absorber", top: -absLumo, bot: -absHomo, fill: "none", stroke: "#7a5b93" },
+    { key: "htl",  label: "HTL", top: -htlLumo, bot: -htlHomo, fill: "none",   stroke: "#dc963c" },
+    { key: "au",   label: "Au",  top: -auWf, bot: -auWf, fill: "var(--au)",    stroke: "#a68b16" },
+  ];
+  // Widths (relative)
+  const widths = [0.8, 1.1, 2.2, 1.1, 0.7];
+  const gap = 8;
+  const totalWunit = widths.reduce((a, b) => a + b, 0);
+  const plotW = W - M.l - M.r - gap * (layers.length - 1);
+  let cursor = M.l;
+  const boxes = layers.map((L, i) => {
+    const w = plotW * widths[i] / totalWunit;
+    const x0 = cursor;
+    const x1 = cursor + w;
+    cursor = x1 + gap;
+    return { ...L, x0, x1 };
+  });
+
+  // Build SVG content
+  const yAxis = [];
+  for (let e = -2; e >= -7; e--) {
+    const y = yOf(e);
+    yAxis.push(
+      `<line x1="${M.l}" x2="${W - M.r}" y1="${y}" y2="${y}" stroke="#eee" stroke-width="0.5"/>`,
+      `<text x="${M.l - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="#666">${e}</text>`
+    );
+  }
+  yAxis.push(
+    `<line x1="${M.l}" x2="${M.l}" y1="${M.t}" y2="${H - M.b}" stroke="#333" stroke-width="0.8"/>`,
+    `<text x="14" y="${(M.t + H - M.b) / 2}" font-size="11" fill="#333" ` +
+    `transform="rotate(-90 14 ${(M.t + H - M.b) / 2})" text-anchor="middle">Energy (eV)</text>`
+  );
+
+  const boxSvg = boxes.map(b => {
+    const isMetal = (b.top === b.bot);
+    if (isMetal) {
+      // Thick horizontal bar at the WF
+      const y = yOf(b.top);
+      return `
+        <line x1="${b.x0}" x2="${b.x1}" y1="${y}" y2="${y}"
+              stroke="${b.stroke}" stroke-width="3.5"/>
+        <text x="${(b.x0 + b.x1) / 2}" y="${y + 15}" text-anchor="middle"
+              font-size="11" fill="#333" font-weight="600">${b.label}</text>
+        <text x="${(b.x0 + b.x1) / 2}" y="${y - 6}" text-anchor="middle"
+              font-size="10" fill="#333">${b.top.toFixed(2)}</text>
+      `;
+    } else {
+      const yT = yOf(b.top);
+      const yB = yOf(b.bot);
+      const cy = (yT + yB) / 2;
+      const subLabel = (b.key === "abs")
+        ? `<text x="${(b.x0 + b.x1) / 2}" y="${cy + 18}" text-anchor="middle"
+                 font-size="11" fill="#333" font-weight="600"><tspan font-style="italic">E</tspan><tspan font-size="8" dy="2">g</tspan><tspan dy="-2"> = ${egEv.toFixed(2)} eV</tspan></text>`
+        : "";
+      const yLabel = (b.key === "abs") ? cy - 2 : cy + 4;
+      return `
+        <rect x="${b.x0}" y="${yT}" width="${b.x1 - b.x0}" height="${yB - yT}"
+              fill="${b.fill}" stroke="${b.stroke}" stroke-width="2"/>
+        <text x="${(b.x0 + b.x1) / 2}" y="${yLabel}" text-anchor="middle"
+              font-size="11" fill="#333" font-weight="600">${b.label}</text>
+        ${subLabel}
+        <text x="${(b.x0 + b.x1) / 2}" y="${yT - 4}" text-anchor="middle"
+              font-size="10" fill="#333">${b.top.toFixed(2)}</text>
+        <text x="${(b.x0 + b.x1) / 2}" y="${yB + 12}" text-anchor="middle"
+              font-size="10" fill="#333">${b.bot.toFixed(2)}</text>
+      `;
+    }
+  }).join("");
+
+  svg.innerHTML = yAxis.join("") + boxSvg;
+}
+
+// ------------- update on any control change -------------
+function update() {
+  const cur = currentKey();
+  const run = GRID.runs[cur.key];
+
+  document.getElementById("egVal").textContent  = `${cur.egEv.toFixed(2)} eV`;
+  document.getElementById("LVal").textContent   = `${cur.L} nm`;
+  document.getElementById("tauVal").textContent = `${cur.tau} ns`;
+  document.getElementById("SVal").textContent   = `${sci(cur.S)} cm/s`;
+  document.getElementById("muVal").textContent  = `${cur.mu} cm² V⁻¹ s⁻¹`;
+  document.getElementById("RsVal").textContent  = `${cur.Rs} Ω cm²`;
+  document.getElementById("RshVal").textContent =
+    isFinite(cur.Rsh) ? `${cur.Rsh} Ω cm²` : "∞";
+
+  drawEnergyDiagram(cur.egEv);
+
+  const A = EXTRAS.absorptance[cur.egLabel].A;
+  const am = EXTRAS.am15g;
+  const absorbed = am.map((v, i) => v * A[i]);
+  Plotly.restyle("absplot",
+    { y: [am, absorbed, A] },
+    [0, 1, 2]);
+
+  if (!run) {
+    ["kfJsc", "kfVoc", "kfFF", "kfPCE"].forEach(id =>
+      document.getElementById(id).textContent = "n/a");
+    return;
+  }
+
+  // Apply Rs / Rsh post-processing to the intrinsic curve.
+  const { V: Vt, J: Jt } = applyRsRsh(GRID.V, run.J, cur.Rs, cur.Rsh);
+  const kf = keyFig(Vt, Jt);
+
+  document.getElementById("kfJsc").textContent = fmt(kf.Jsc, 2);
+  document.getElementById("kfVoc").textContent = fmt(kf.Voc, 3);
+  document.getElementById("kfFF").textContent  = fmt(kf.FF,  3);
+  document.getElementById("kfPCE").textContent = fmt(kf.PCE, 2);
+
+  Plotly.restyle("plot",
+    { x: [Vt, Vt], y: [Jt, jvToP(Vt, Jt)] },
+    [2, 3]);
+
+  const PCE_MAX = 30;
+  const frac = Math.max(0, Math.min(1, kf.PCE / PCE_MAX));
+  document.getElementById("progFill").style.width = `${(frac * 100).toFixed(1)}%`;
+  document.getElementById("progTxt").textContent =
+    `PCE: ${kf.PCE.toFixed(2)} %   (0 – ${PCE_MAX} %)`;
+
+  if (expandedParam !== null) drawSweep(expandedParam);
+}
+
+loadAll();
+</script>
+
+</body>
+</html>
